@@ -1,0 +1,21 @@
+{
+  "item.deathnote_realistic.death_note": "Death Note",
+  "screen.deathnote_realistic.title": "Death Note",
+  "screen.deathnote_realistic.target": "Jugador objetivo",
+  "screen.deathnote_realistic.target_hint": "Nombre exacto de un jugador conectado",
+  "screen.deathnote_realistic.write": "Escribir nombre",
+  "screen.deathnote_realistic.rule": "El nombre surte efecto después de %s segundos.",
+  "screen.deathnote_realistic.cause.heart_attack": "Causa: Ataque cardíaco",
+  "screen.deathnote_realistic.cause.accident": "Causa: Accidente",
+  "screen.deathnote_realistic.cause.mysterious": "Causa: Muerte misteriosa",
+  "message.deathnote_realistic.must_hold": "Debes tener la Death Note en la mano.",
+  "message.deathnote_realistic.invalid_name": "Nombre de jugador inválido.",
+  "message.deathnote_realistic.cooldown": "Espera %s segundo(s) antes de escribir otro nombre.",
+  "message.deathnote_realistic.not_online": "Ese jugador no está conectado.",
+  "message.deathnote_realistic.no_self": "Esta Death Note no permite apuntarte a ti mismo.",
+  "message.deathnote_realistic.already_pending": "Ese nombre ya está escrito y pendiente.",
+  "message.deathnote_realistic.accepted": "El nombre de %s fue escrito. El efecto ocurrirá en %s segundos.",
+  "message.deathnote_realistic.cause.heart_attack": "Tu corazón se detiene de repente. La Death Note te ha reclamado.",
+  "message.deathnote_realistic.cause.accident": "Un accidente fatal escrito en la Death Note te alcanza.",
+  "message.deathnote_realistic.cause.mysterious": "Una fuerza desconocida de la Death Note se cierra a tu alrededor."
+}

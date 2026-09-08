@@ -1,0 +1,15 @@
+{
+  "type": "minecraft:crafting_shaped",
+  "category": "misc",
+  "pattern": ["IFI", "DBD", "IDI"],
+  "key": {
+    "I": "minecraft:ink_sac",
+    "F": "minecraft:feather",
+    "D": "minecraft:black_dye",
+    "B": "minecraft:book"
+  },
+  "result": {
+    "id": "deathnote_realistic:death_note",
+    "count": 1
+  }
+}

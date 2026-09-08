@@ -1,0 +1,23 @@
+{
+  "schemaVersion": 1,
+  "id": "deathnote_realistic",
+  "version": "${version}",
+  "name": "Death Note 26.2 Realistic",
+  "description": "A safer, modernized and more immersive fictional Death Note gameplay mod for Minecraft 26.2.",
+  "authors": ["Death Note 26.2 Realistic contributors"],
+  "contact": {
+    "sources": "https://github.com/ericafk0001/Death-Note-1.21.X"
+  },
+  "license": "MIT",
+  "environment": "*",
+  "entrypoints": {
+    "main": ["dev.deathnote.realistic.DeathNoteMod"],
+    "client": ["dev.deathnote.realistic.client.DeathNoteClient"]
+  },
+  "depends": {
+    "fabricloader": ">=0.19.5",
+    "minecraft": "~26.2",
+    "java": ">=25",
+    "fabric-api": "*"
+  }
+}
