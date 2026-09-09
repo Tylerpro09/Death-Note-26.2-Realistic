@@ -18,14 +18,6 @@ import java.util.HashMap;
 import java.util.Map;
 import java.util.UUID;
 
-/**
- * Persistent gameplay model for the canon-oriented Death Note rules.
- *
- * This is intentionally Minecraft gameplay logic, not a claim to reproduce
- * every edge case from the source material. It enforces the important rules:
- * ownership, remembered identity, default heart attack, transfer, and the
- * Shinigami-eye bargain.
- */
 public final class CanonRulesState {
     private static final Gson GSON = new GsonBuilder().setPrettyPrinting().create();
     private static final String DIRECTORY = "deathnote_realistic";
@@ -40,6 +32,7 @@ public final class CanonRulesState {
     private static final Map<UUID, Boolean> SHINIGAMI_EYES = new HashMap<>();
     private static final Map<UUID, Long> LIFESPAN_SECONDS = new HashMap<>();
     private static final Map<UUID, Map<UUID, Long>> LAST_SEEN_TICK = new HashMap<>();
+    private static long currentTick;
     private static boolean dirty;
 
     private CanonRulesState() {}
@@ -57,7 +50,7 @@ public final class CanonRulesState {
         return false;
     }
 
-    public static boolean hasSeenRecently(ServerPlayer writer, ServerPlayer target, long currentTick) {
+    public static boolean hasSeenRecently(ServerPlayer writer, ServerPlayer target) {
         if (writer.getUUID().equals(target.getUUID())) return true;
         Map<UUID, Long> seen = LAST_SEEN_TICK.get(writer.getUUID());
         if (seen == null) return false;
@@ -65,7 +58,8 @@ public final class CanonRulesState {
         return currentTick - last <= FACE_MEMORY_SECONDS * 20L;
     }
 
-    public static void tick(MinecraftServer server, long currentTick) {
+    public static void tick(MinecraftServer server) {
+        currentTick++;
         for (ServerPlayer observer : server.getPlayerList().getPlayers()) {
             for (ServerPlayer target : server.getPlayerList().getPlayers()) {
                 if (observer == target) continue;
@@ -139,6 +133,7 @@ public final class CanonRulesState {
         SHINIGAMI_EYES.clear();
         LIFESPAN_SECONDS.clear();
         LAST_SEEN_TICK.clear();
+        currentTick = 0L;
 
         Path path = path(server);
         if (!Files.exists(path)) {
