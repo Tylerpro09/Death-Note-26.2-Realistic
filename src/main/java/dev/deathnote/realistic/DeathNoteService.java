@@ -26,14 +26,15 @@ public final class DeathNoteService {
     private static final Pattern VALID_REGISTRY_ID = Pattern.compile("^[a-z0-9_.-]+:[a-z0-9_./-]+$");
     private static final int ENTITY_RADIUS = 64;
 
-    // Global block mode scans the active areas around every connected player,
-    // in every dimension. This avoids force-loading the entire world and
-    // freezing the server while still making the effect server-wide.
+    // Every block ID written in BLOCK mode remains active. The server keeps
+    // erasing matching blocks from active areas as the world is played.
     private static final int GLOBAL_BLOCK_SCAN_RADIUS = 24;
-    private static final int MAX_BLOCKS_ERASED_PER_USE = 2048;
+    private static final int BLOCK_SCAN_INTERVAL_TICKS = 20;
+    private static final int MAX_BLOCKS_ERASED_PER_SCAN = 2048;
 
     private static final Map<UUID, PendingDeath> PENDING = new HashMap<>();
     private static final Map<UUID, Long> WRITER_COOLDOWN_UNTIL = new HashMap<>();
+    private static final Set<String> CONDEMNED_BLOCK_IDS = new HashSet<>();
     private static long ticks;
 
     private DeathNoteService() {}
@@ -47,7 +48,7 @@ public final class DeathNoteService {
         String kind = payload.targetKind() == null ? "player" : payload.targetKind().trim().toLowerCase();
         switch (kind) {
             case "entity" -> eraseNearestEntity(writer, payload.targetName());
-            case "block" -> eraseBlocksGlobally(writer, payload.targetName());
+            case "block" -> condemnBlockGlobally(writer, payload.targetName());
             default -> submitPlayer(writer, payload);
         }
     }
@@ -122,14 +123,27 @@ public final class DeathNoteService {
         writer.sendSystemMessage(Component.translatable("message.deathnote_realistic.entity_erased", displayName, id).withStyle(ChatFormatting.DARK_RED));
     }
 
-    private static void eraseBlocksGlobally(ServerPlayer writer, String rawId) {
+    private static void condemnBlockGlobally(ServerPlayer writer, String rawId) {
         String id = normalizeRegistryId(rawId);
         if (id == null) {
             message(writer, "message.deathnote_realistic.invalid_registry_id", ChatFormatting.RED);
             return;
         }
 
-        MinecraftServer server = ((ServerLevel) writer.level()).getServer();
+        CONDEMNED_BLOCK_IDS.add(id);
+        int erasedNow = eraseCondemnedBlocks(((ServerLevel) writer.level()).getServer(), MAX_BLOCKS_ERASED_PER_SCAN);
+
+        writer.sendSystemMessage(Component.translatable(
+            "message.deathnote_realistic.block_erasure_activated",
+            id,
+            erasedNow,
+            GLOBAL_BLOCK_SCAN_RADIUS
+        ).withStyle(ChatFormatting.DARK_RED));
+    }
+
+    private static int eraseCondemnedBlocks(MinecraftServer server, int limit) {
+        if (CONDEMNED_BLOCK_IDS.isEmpty() || server.getPlayerList().getPlayers().isEmpty()) return 0;
+
         Set<Long> visited = new HashSet<>();
         int erased = 0;
 
@@ -137,41 +151,31 @@ public final class DeathNoteService {
         for (ServerPlayer anchor : server.getPlayerList().getPlayers()) {
             ServerLevel level = (ServerLevel) anchor.level();
             BlockPos center = anchor.blockPosition();
+            int minY = Math.max(level.getMinY(), center.getY() - GLOBAL_BLOCK_SCAN_RADIUS);
+            int maxY = Math.min(level.getMaxY() - 1, center.getY() + GLOBAL_BLOCK_SCAN_RADIUS);
 
-            for (int dx = -GLOBAL_BLOCK_SCAN_RADIUS; dx <= GLOBAL_BLOCK_SCAN_RADIUS; dx++) {
-                for (int dy = -GLOBAL_BLOCK_SCAN_RADIUS; dy <= GLOBAL_BLOCK_SCAN_RADIUS; dy++) {
-                    for (int dz = -GLOBAL_BLOCK_SCAN_RADIUS; dz <= GLOBAL_BLOCK_SCAN_RADIUS; dz++) {
-                        BlockPos pos = center.offset(dx, dy, dz);
+            for (int x = center.getX() - GLOBAL_BLOCK_SCAN_RADIUS; x <= center.getX() + GLOBAL_BLOCK_SCAN_RADIUS; x++) {
+                for (int z = center.getZ() - GLOBAL_BLOCK_SCAN_RADIUS; z <= center.getZ() + GLOBAL_BLOCK_SCAN_RADIUS; z++) {
+                    for (int y = minY; y <= maxY; y++) {
+                        BlockPos pos = new BlockPos(x, y, z);
                         long key = pos.asLong() ^ ((long) level.dimension().identifier().hashCode() << 32);
                         if (!visited.add(key)) continue;
 
                         var state = level.getBlockState(pos);
                         if (state.isAir()) continue;
-                        if (!id.equals(BuiltInRegistries.BLOCK.getKey(state.getBlock()).toString())) continue;
+
+                        String blockId = BuiltInRegistries.BLOCK.getKey(state.getBlock()).toString();
+                        if (!CONDEMNED_BLOCK_IDS.contains(blockId)) continue;
 
                         level.setBlockAndUpdate(pos, Blocks.AIR.defaultBlockState());
                         erased++;
-
-                        if (erased >= MAX_BLOCKS_ERASED_PER_USE) {
-                            break outer;
-                        }
+                        if (erased >= limit) break outer;
                     }
                 }
             }
         }
 
-        if (erased == 0) {
-            writer.sendSystemMessage(Component.translatable("message.deathnote_realistic.block_not_found_global", id).withStyle(ChatFormatting.RED));
-            return;
-        }
-
-        writer.sendSystemMessage(Component.translatable(
-            "message.deathnote_realistic.blocks_erased_global",
-            erased,
-            id,
-            GLOBAL_BLOCK_SCAN_RADIUS,
-            MAX_BLOCKS_ERASED_PER_USE
-        ).withStyle(ChatFormatting.DARK_RED));
+        return erased;
     }
 
     private static String normalizeRegistryId(String raw) {
@@ -184,6 +188,11 @@ public final class DeathNoteService {
 
     public static void tick(MinecraftServer server) {
         ticks++;
+
+        if (!CONDEMNED_BLOCK_IDS.isEmpty() && ticks % BLOCK_SCAN_INTERVAL_TICKS == 0) {
+            eraseCondemnedBlocks(server, MAX_BLOCKS_ERASED_PER_SCAN);
+        }
+
         if (PENDING.isEmpty()) return;
 
         Iterator<Map.Entry<UUID, PendingDeath>> iterator = PENDING.entrySet().iterator();
