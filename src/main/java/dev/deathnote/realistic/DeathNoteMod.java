@@ -40,9 +40,7 @@ public final class DeathNoteMod implements ModInitializer {
         ServerTickEvents.END_SERVER_TICK.register(server -> {
             DeathNoteService.tick(server);
             CanonRulesState.tick(server);
-            if (server.getTickCount() % 100 == 0) {
-                CanonRulesState.save(server);
-            }
+            CanonRulesState.save(server);
         });
         LOGGER.info("Death Note 26.2 Realistic v3 Canon Rules initialized.");
     }
