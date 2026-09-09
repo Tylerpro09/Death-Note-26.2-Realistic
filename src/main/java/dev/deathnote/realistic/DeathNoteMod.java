@@ -20,18 +20,30 @@ public final class DeathNoteMod implements ModInitializer {
 
         PayloadTypeRegistry.serverboundPlay().register(DeathNoteWritePayload.TYPE, DeathNoteWritePayload.CODEC);
         ServerPlayNetworking.registerGlobalReceiver(DeathNoteWritePayload.TYPE, (payload, context) ->
-            DeathNoteService.submit(context.player(), payload)
+            CanonRouter.submit(context.player(), payload)
         );
 
-        ServerLifecycleEvents.SERVER_STARTED.register(DeathNoteService::loadState);
-        ServerLifecycleEvents.SERVER_STOPPING.register(DeathNoteService::shutdown);
+        ServerLifecycleEvents.SERVER_STARTED.register(server -> {
+            DeathNoteService.loadState(server);
+            CanonRulesState.load(server);
+        });
+        ServerLifecycleEvents.SERVER_STOPPING.register(server -> {
+            DeathNoteService.shutdown(server);
+            CanonRulesState.save(server);
+        });
 
         ServerPlayerEvents.AFTER_RESPAWN.register((oldPlayer, newPlayer, alive) ->
             DeathNoteService.enforceCondemnedPlayer(newPlayer)
         );
         ServerPlayerEvents.JOIN.register(DeathNoteService::enforceCondemnedPlayer);
 
-        ServerTickEvents.END_SERVER_TICK.register(DeathNoteService::tick);
-        LOGGER.info("Death Note 26.2 Realistic initialized.");
+        ServerTickEvents.END_SERVER_TICK.register(server -> {
+            DeathNoteService.tick(server);
+            CanonRulesState.tick(server);
+            if (server.getTickCount() % 100 == 0) {
+                CanonRulesState.save(server);
+            }
+        });
+        LOGGER.info("Death Note 26.2 Realistic v3 Canon Rules initialized.");
     }
 }
