@@ -16,6 +16,7 @@ public final class DeathNoteScreen extends Screen {
     private String targetKind = "player";
     private Button causeButton;
     private Button targetKindButton;
+    private Button restoreButton;
 
     public DeathNoteScreen(Component title) {
         super(title);
@@ -36,12 +37,11 @@ public final class DeathNoteScreen extends Screen {
             this.targetKind = switch (this.targetKind) {
                 case "player" -> "entity";
                 case "entity" -> "block";
-                case "block" -> "restore_player";
-                case "restore_player" -> "restore_block";
                 default -> "player";
             };
             button.setMessage(targetKindLabel());
             updateHint();
+            updateRestoreButton();
         }).bounds(centerX - 100, top + 32, 200, 20).build();
         this.addRenderableWidget(this.targetKindButton);
 
@@ -56,10 +56,15 @@ public final class DeathNoteScreen extends Screen {
         this.addRenderableWidget(this.causeButton);
 
         this.addRenderableWidget(Button.builder(Component.translatable("screen.deathnote_realistic.write"), button -> submit())
-            .bounds(centerX - 100, top + 96, 98, 20).build());
+            .bounds(centerX - 100, top + 96, 64, 20).build());
+
+        this.restoreButton = Button.builder(Component.translatable("screen.deathnote_realistic.restore"), button -> restore())
+            .bounds(centerX - 32, top + 96, 64, 20).build();
+        this.addRenderableWidget(this.restoreButton);
+        updateRestoreButton();
 
         this.addRenderableWidget(Button.builder(Component.translatable("gui.cancel"), button -> onClose())
-            .bounds(centerX + 2, top + 96, 98, 20).build());
+            .bounds(centerX + 36, top + 96, 64, 20).build());
     }
 
     private Component causeLabel() {
@@ -76,10 +81,31 @@ public final class DeathNoteScreen extends Screen {
         }
     }
 
+    private void updateRestoreButton() {
+        if (this.restoreButton != null) {
+            this.restoreButton.active = !"entity".equals(this.targetKind);
+        }
+    }
+
     private void submit() {
         String target = this.targetBox.getValue().trim();
         if (target.isEmpty()) return;
         ClientPlayNetworking.send(new DeathNoteWritePayload(target, this.cause.id(), this.targetKind));
+        onClose();
+    }
+
+    private void restore() {
+        String target = this.targetBox.getValue().trim();
+        if (target.isEmpty()) return;
+
+        String restoreKind = switch (this.targetKind) {
+            case "player" -> "restore_player";
+            case "block" -> "restore_block";
+            default -> null;
+        };
+
+        if (restoreKind == null) return;
+        ClientPlayNetworking.send(new DeathNoteWritePayload(target, this.cause.id(), restoreKind));
         onClose();
     }
 
