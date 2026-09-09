@@ -13,6 +13,7 @@
   "screen.deathnote_realistic.target_kind.restore_player": "Target type: Restore player",
   "screen.deathnote_realistic.target_kind.restore_block": "Target type: Restore block",
   "screen.deathnote_realistic.write": "Execute",
+  "screen.deathnote_realistic.restore": "Restore",
   "screen.deathnote_realistic.rule": "Players take effect after %s seconds. A Death Note victim cannot remain alive until restored.",
   "screen.deathnote_realistic.cause.heart_attack": "Cause: Heart attack",
   "screen.deathnote_realistic.cause.accident": "Cause: Accident",
