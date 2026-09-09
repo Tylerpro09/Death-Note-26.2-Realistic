@@ -35,7 +35,7 @@ public final class CanonRouter {
             return;
         }
 
-        if (!CanonRulesState.hasSeenRecently(writer, target, DeathNoteService.currentTick())) {
+        if (!CanonRulesState.hasSeenRecently(writer, target)) {
             writer.sendSystemMessage(Component.translatable(
                 "message.deathnote_realistic.face_required",
                 CanonRulesState.FACE_MEMORY_SECONDS
