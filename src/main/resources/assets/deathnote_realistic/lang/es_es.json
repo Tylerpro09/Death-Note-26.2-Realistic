@@ -9,7 +9,7 @@
   "screen.deathnote_realistic.target_kind.entity": "Tipo de objetivo: Entidad",
   "screen.deathnote_realistic.target_kind.block": "Tipo de objetivo: Bloque",
   "screen.deathnote_realistic.write": "Escribir objetivo",
-  "screen.deathnote_realistic.rule": "Los jugadores tardan %s segundos. Las entidades se eliminan al instante y los bloques afectan globalmente las zonas activas del servidor.",
+  "screen.deathnote_realistic.rule": "Los jugadores tardan %s segundos. Las entidades se eliminan al instante y los bloques quedan condenados globalmente en las zonas activas.",
   "screen.deathnote_realistic.cause.heart_attack": "Causa: Ataque cardíaco",
   "screen.deathnote_realistic.cause.accident": "Causa: Accidente",
   "screen.deathnote_realistic.cause.mysterious": "Causa: Muerte misteriosa",
@@ -23,8 +23,7 @@
   "message.deathnote_realistic.accepted": "El nombre de %s fue escrito. El efecto ocurrirá en %s segundos.",
   "message.deathnote_realistic.entity_not_found": "No se encontró ninguna entidad %s a menos de %s bloques.",
   "message.deathnote_realistic.entity_erased": "%s (%s) fue eliminada por la Death Note.",
-  "message.deathnote_realistic.block_not_found_global": "No se encontró ningún bloque %s en las zonas activas del servidor.",
-  "message.deathnote_realistic.blocks_erased_global": "Se eliminaron %s bloques %s globalmente en las zonas activas (radio %s por jugador, máximo %s por uso).",
+  "message.deathnote_realistic.block_erasure_activated": "%s quedó condenado globalmente. Se eliminaron %s bloques ahora y seguirá desapareciendo en un radio de %s bloques alrededor de las zonas activas.",
   "message.deathnote_realistic.cause.heart_attack": "Tu corazón se detiene de repente. La Death Note te ha reclamado.",
   "message.deathnote_realistic.cause.accident": "Un accidente fatal escrito en la Death Note te alcanza.",
   "message.deathnote_realistic.cause.mysterious": "Una fuerza desconocida de la Death Note se cierra a tu alrededor."
