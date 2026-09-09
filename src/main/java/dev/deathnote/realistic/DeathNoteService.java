@@ -36,7 +36,7 @@ public final class DeathNoteService {
         long cooldownUntil = WRITER_COOLDOWN_UNTIL.getOrDefault(writer.getUUID(), 0L);
         if (ticks < cooldownUntil) {
             long seconds = Math.max(1L, (cooldownUntil - ticks + 19L) / 20L);
-            writer.displayClientMessage(Component.translatable("message.deathnote_realistic.cooldown", seconds).withStyle(ChatFormatting.RED), false);
+            writer.sendSystemMessage(Component.translatable("message.deathnote_realistic.cooldown", seconds).withStyle(ChatFormatting.RED));
             return;
         }
 
@@ -62,10 +62,9 @@ public final class DeathNoteService {
         PENDING.put(target.getUUID(), new PendingDeath(target.getUUID(), writer.getUUID(), cause, dueTick));
         WRITER_COOLDOWN_UNTIL.put(writer.getUUID(), ticks + DeathNoteRules.WRITER_COOLDOWN_SECONDS * 20L);
 
-        writer.displayClientMessage(
+        writer.sendSystemMessage(
             Component.translatable("message.deathnote_realistic.accepted", target.getName().getString(), DeathNoteRules.DEATH_DELAY_SECONDS)
-                .withStyle(ChatFormatting.DARK_RED),
-            false
+                .withStyle(ChatFormatting.DARK_RED)
         );
     }
 
@@ -80,7 +79,7 @@ public final class DeathNoteService {
 
             ServerPlayer target = server.getPlayerList().getPlayer(pending.targetId());
             if (target != null && target.isAlive()) {
-                target.displayClientMessage(causeMessage(pending.cause()), false);
+                target.sendSystemMessage(causeMessage(pending.cause()));
                 target.kill((ServerLevel) target.level());
             }
             iterator.remove();
@@ -96,7 +95,7 @@ public final class DeathNoteService {
     }
 
     private static void message(ServerPlayer player, String key, ChatFormatting color) {
-        player.displayClientMessage(Component.translatable(key).withStyle(color), false);
+        player.sendSystemMessage(Component.translatable(key).withStyle(color));
     }
 
     private record PendingDeath(UUID targetId, UUID writerId, DeathCause cause, long dueTick) {}
