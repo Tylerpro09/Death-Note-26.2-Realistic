@@ -9,7 +9,7 @@
   "screen.deathnote_realistic.target_kind.entity": "Target type: Entity",
   "screen.deathnote_realistic.target_kind.block": "Target type: Block",
   "screen.deathnote_realistic.write": "Write target",
-  "screen.deathnote_realistic.rule": "Players take effect after %s seconds. Entities are erased immediately and blocks affect active server areas globally.",
+  "screen.deathnote_realistic.rule": "Players take effect after %s seconds. Entities are erased immediately and blocks remain globally condemned in active areas.",
   "screen.deathnote_realistic.cause.heart_attack": "Cause: Heart attack",
   "screen.deathnote_realistic.cause.accident": "Cause: Accident",
   "screen.deathnote_realistic.cause.mysterious": "Cause: Mysterious death",
@@ -23,8 +23,7 @@
   "message.deathnote_realistic.accepted": "%s's name has been written. The effect is scheduled for %s seconds from now.",
   "message.deathnote_realistic.entity_not_found": "No %s entity was found within %s blocks.",
   "message.deathnote_realistic.entity_erased": "%s (%s) was erased by the Death Note.",
-  "message.deathnote_realistic.block_not_found_global": "No %s block was found in the server's active areas.",
-  "message.deathnote_realistic.blocks_erased_global": "Erased %s %s blocks globally across active areas (radius %s per player, maximum %s per use).",
+  "message.deathnote_realistic.block_erasure_activated": "%s is now globally condemned. %s blocks were erased immediately and it will keep disappearing within %s blocks of active areas.",
   "message.deathnote_realistic.cause.heart_attack": "Your heart suddenly stops. The Death Note has claimed you.",
   "message.deathnote_realistic.cause.accident": "A fatal accident written in the Death Note catches up with you.",
   "message.deathnote_realistic.cause.mysterious": "An unknown force from the Death Note closes in around you."
