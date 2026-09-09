@@ -13,6 +13,7 @@
   "screen.deathnote_realistic.target_kind.restore_player": "Tipo de objetivo: Restaurar jugador",
   "screen.deathnote_realistic.target_kind.restore_block": "Tipo de objetivo: Restaurar bloque",
   "screen.deathnote_realistic.write": "Ejecutar",
+  "screen.deathnote_realistic.restore": "Restaurar",
   "screen.deathnote_realistic.rule": "Los jugadores tardan %s segundos. Una víctima de la Death Note no podrá mantenerse con vida hasta ser restaurada.",
   "screen.deathnote_realistic.cause.heart_attack": "Causa: Ataque cardíaco",
   "screen.deathnote_realistic.cause.accident": "Causa: Accidente",
