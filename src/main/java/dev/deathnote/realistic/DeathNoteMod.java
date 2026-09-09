@@ -2,6 +2,7 @@ package dev.deathnote.realistic;
 
 import dev.deathnote.realistic.network.DeathNoteWritePayload;
 import net.fabricmc.api.ModInitializer;
+import net.fabricmc.fabric.api.entity.event.v1.ServerPlayerEvents;
 import net.fabricmc.fabric.api.event.lifecycle.v1.ServerTickEvents;
 import net.fabricmc.fabric.api.networking.v1.PayloadTypeRegistry;
 import net.fabricmc.fabric.api.networking.v1.ServerPlayNetworking;
@@ -20,6 +21,11 @@ public final class DeathNoteMod implements ModInitializer {
         ServerPlayNetworking.registerGlobalReceiver(DeathNoteWritePayload.TYPE, (payload, context) ->
             DeathNoteService.submit(context.player(), payload)
         );
+
+        ServerPlayerEvents.AFTER_RESPAWN.register((oldPlayer, newPlayer, alive) ->
+            DeathNoteService.enforceCondemnedPlayer(newPlayer)
+        );
+        ServerPlayerEvents.JOIN.register(DeathNoteService::enforceCondemnedPlayer);
 
         ServerTickEvents.END_SERVER_TICK.register(DeathNoteService::tick);
         LOGGER.info("Death Note 26.2 Realistic initialized.");
