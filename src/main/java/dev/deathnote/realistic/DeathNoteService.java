@@ -13,9 +13,11 @@ import net.minecraft.world.level.block.Blocks;
 
 import java.util.Comparator;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.UUID;
 import java.util.regex.Pattern;
 
@@ -23,7 +25,12 @@ public final class DeathNoteService {
     private static final Pattern VALID_NAME = Pattern.compile("^[A-Za-z0-9_]{1,16}$");
     private static final Pattern VALID_REGISTRY_ID = Pattern.compile("^[a-z0-9_.-]+:[a-z0-9_./-]+$");
     private static final int ENTITY_RADIUS = 64;
-    private static final int BLOCK_RADIUS = 16;
+
+    // Global block mode scans the active areas around every connected player,
+    // in every dimension. This avoids force-loading the entire world and
+    // freezing the server while still making the effect server-wide.
+    private static final int GLOBAL_BLOCK_SCAN_RADIUS = 24;
+    private static final int MAX_BLOCKS_ERASED_PER_USE = 2048;
 
     private static final Map<UUID, PendingDeath> PENDING = new HashMap<>();
     private static final Map<UUID, Long> WRITER_COOLDOWN_UNTIL = new HashMap<>();
@@ -40,7 +47,7 @@ public final class DeathNoteService {
         String kind = payload.targetKind() == null ? "player" : payload.targetKind().trim().toLowerCase();
         switch (kind) {
             case "entity" -> eraseNearestEntity(writer, payload.targetName());
-            case "block" -> eraseNearestBlock(writer, payload.targetName());
+            case "block" -> eraseBlocksGlobally(writer, payload.targetName());
             default -> submitPlayer(writer, payload);
         }
     }
@@ -115,42 +122,56 @@ public final class DeathNoteService {
         writer.sendSystemMessage(Component.translatable("message.deathnote_realistic.entity_erased", displayName, id).withStyle(ChatFormatting.DARK_RED));
     }
 
-    private static void eraseNearestBlock(ServerPlayer writer, String rawId) {
+    private static void eraseBlocksGlobally(ServerPlayer writer, String rawId) {
         String id = normalizeRegistryId(rawId);
         if (id == null) {
             message(writer, "message.deathnote_realistic.invalid_registry_id", ChatFormatting.RED);
             return;
         }
 
-        ServerLevel level = (ServerLevel) writer.level();
-        BlockPos center = writer.blockPosition();
-        BlockPos best = null;
-        double bestDistance = Double.MAX_VALUE;
+        MinecraftServer server = ((ServerLevel) writer.level()).getServer();
+        Set<Long> visited = new HashSet<>();
+        int erased = 0;
 
-        for (int dx = -BLOCK_RADIUS; dx <= BLOCK_RADIUS; dx++) {
-            for (int dy = -BLOCK_RADIUS; dy <= BLOCK_RADIUS; dy++) {
-                for (int dz = -BLOCK_RADIUS; dz <= BLOCK_RADIUS; dz++) {
-                    BlockPos pos = center.offset(dx, dy, dz);
-                    var state = level.getBlockState(pos);
-                    if (state.isAir()) continue;
-                    if (!id.equals(BuiltInRegistries.BLOCK.getKey(state.getBlock()).toString())) continue;
+        outer:
+        for (ServerPlayer anchor : server.getPlayerList().getPlayers()) {
+            ServerLevel level = (ServerLevel) anchor.level();
+            BlockPos center = anchor.blockPosition();
 
-                    double distance = center.distSqr(pos);
-                    if (distance < bestDistance) {
-                        bestDistance = distance;
-                        best = pos;
+            for (int dx = -GLOBAL_BLOCK_SCAN_RADIUS; dx <= GLOBAL_BLOCK_SCAN_RADIUS; dx++) {
+                for (int dy = -GLOBAL_BLOCK_SCAN_RADIUS; dy <= GLOBAL_BLOCK_SCAN_RADIUS; dy++) {
+                    for (int dz = -GLOBAL_BLOCK_SCAN_RADIUS; dz <= GLOBAL_BLOCK_SCAN_RADIUS; dz++) {
+                        BlockPos pos = center.offset(dx, dy, dz);
+                        long key = pos.asLong() ^ ((long) level.dimension().location().hashCode() << 32);
+                        if (!visited.add(key)) continue;
+
+                        var state = level.getBlockState(pos);
+                        if (state.isAir()) continue;
+                        if (!id.equals(BuiltInRegistries.BLOCK.getKey(state.getBlock()).toString())) continue;
+
+                        level.setBlockAndUpdate(pos, Blocks.AIR.defaultBlockState());
+                        erased++;
+
+                        if (erased >= MAX_BLOCKS_ERASED_PER_USE) {
+                            break outer;
+                        }
                     }
                 }
             }
         }
 
-        if (best == null) {
-            writer.sendSystemMessage(Component.translatable("message.deathnote_realistic.block_not_found", id, BLOCK_RADIUS).withStyle(ChatFormatting.RED));
+        if (erased == 0) {
+            writer.sendSystemMessage(Component.translatable("message.deathnote_realistic.block_not_found_global", id).withStyle(ChatFormatting.RED));
             return;
         }
 
-        level.setBlockAndUpdate(best, Blocks.AIR.defaultBlockState());
-        writer.sendSystemMessage(Component.translatable("message.deathnote_realistic.block_erased", id, best.getX(), best.getY(), best.getZ()).withStyle(ChatFormatting.DARK_RED));
+        writer.sendSystemMessage(Component.translatable(
+            "message.deathnote_realistic.blocks_erased_global",
+            erased,
+            id,
+            GLOBAL_BLOCK_SCAN_RADIUS,
+            MAX_BLOCKS_ERASED_PER_USE
+        ).withStyle(ChatFormatting.DARK_RED));
     }
 
     private static String normalizeRegistryId(String raw) {
