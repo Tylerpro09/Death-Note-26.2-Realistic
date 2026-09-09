@@ -17,6 +17,7 @@ public final class DeathNoteScreen extends Screen {
     private Button causeButton;
     private Button targetKindButton;
     private Button restoreButton;
+    private Button transferButton;
 
     public DeathNoteScreen(Component title) {
         super(title);
@@ -25,9 +26,9 @@ public final class DeathNoteScreen extends Screen {
     @Override
     protected void init() {
         int centerX = this.width / 2;
-        int top = Math.max(45, this.height / 2 - 86);
+        int top = Math.max(35, this.height / 2 - 105);
 
-        this.targetBox = new EditBox(this.font, centerX - 100, top, 200, 20, Component.translatable("screen.deathnote_realistic.target"));
+        this.targetBox = new EditBox(this.font, centerX - 110, top, 220, 20, Component.translatable("screen.deathnote_realistic.target"));
         this.targetBox.setMaxLength(64);
         updateHint();
         this.addRenderableWidget(this.targetBox);
@@ -41,8 +42,8 @@ public final class DeathNoteScreen extends Screen {
             };
             button.setMessage(targetKindLabel());
             updateHint();
-            updateRestoreButton();
-        }).bounds(centerX - 100, top + 32, 200, 20).build();
+            updateActionButtons();
+        }).bounds(centerX - 110, top + 30, 220, 20).build();
         this.addRenderableWidget(this.targetKindButton);
 
         this.causeButton = Button.builder(causeLabel(), button -> {
@@ -52,19 +53,27 @@ public final class DeathNoteScreen extends Screen {
                 case MYSTERIOUS -> DeathCause.HEART_ATTACK;
             };
             button.setMessage(causeLabel());
-        }).bounds(centerX - 100, top + 64, 200, 20).build();
+        }).bounds(centerX - 110, top + 60, 220, 20).build();
         this.addRenderableWidget(this.causeButton);
 
         this.addRenderableWidget(Button.builder(Component.translatable("screen.deathnote_realistic.write"), button -> submit())
-            .bounds(centerX - 100, top + 96, 64, 20).build());
+            .bounds(centerX - 110, top + 90, 70, 20).build());
 
         this.restoreButton = Button.builder(Component.translatable("screen.deathnote_realistic.restore"), button -> restore())
-            .bounds(centerX - 32, top + 96, 64, 20).build();
+            .bounds(centerX - 35, top + 90, 70, 20).build();
         this.addRenderableWidget(this.restoreButton);
-        updateRestoreButton();
 
         this.addRenderableWidget(Button.builder(Component.translatable("gui.cancel"), button -> onClose())
-            .bounds(centerX + 36, top + 96, 64, 20).build());
+            .bounds(centerX + 40, top + 90, 70, 20).build());
+
+        this.transferButton = Button.builder(Component.translatable("screen.deathnote_realistic.transfer"), button -> transfer())
+            .bounds(centerX - 110, top + 120, 107, 20).build();
+        this.addRenderableWidget(this.transferButton);
+
+        this.addRenderableWidget(Button.builder(Component.translatable("screen.deathnote_realistic.eyes_deal"), button -> eyesDeal())
+            .bounds(centerX + 3, top + 120, 107, 20).build());
+
+        updateActionButtons();
     }
 
     private Component causeLabel() {
@@ -81,9 +90,15 @@ public final class DeathNoteScreen extends Screen {
         }
     }
 
-    private void updateRestoreButton() {
+    private void updateActionButtons() {
         if (this.restoreButton != null) {
             this.restoreButton.active = !"entity".equals(this.targetKind);
+        }
+        if (this.transferButton != null) {
+            this.transferButton.active = "player".equals(this.targetKind);
+        }
+        if (this.causeButton != null) {
+            this.causeButton.active = "player".equals(this.targetKind);
         }
     }
 
@@ -109,12 +124,24 @@ public final class DeathNoteScreen extends Screen {
         onClose();
     }
 
+    private void transfer() {
+        String target = this.targetBox.getValue().trim();
+        if (target.isEmpty()) return;
+        ClientPlayNetworking.send(new DeathNoteWritePayload(target, this.cause.id(), "transfer"));
+        onClose();
+    }
+
+    private void eyesDeal() {
+        ClientPlayNetworking.send(new DeathNoteWritePayload("", this.cause.id(), "eyes_deal"));
+        onClose();
+    }
+
     @Override
     public void extractRenderState(GuiGraphicsExtractor graphics, int mouseX, int mouseY, float delta) {
         super.extractRenderState(graphics, mouseX, mouseY, delta);
         int centerX = this.width / 2;
-        int top = Math.max(45, this.height / 2 - 86);
-        graphics.text(this.font, this.title, centerX - this.font.width(this.title) / 2, top - 30, 0xFFAA0000, true);
-        graphics.text(this.font, Component.translatable("screen.deathnote_realistic.rule", DeathNoteRules.DEATH_DELAY_SECONDS), centerX - 100, top - 14, 0xFFB0B0B0, false);
+        int top = Math.max(35, this.height / 2 - 105);
+        graphics.text(this.font, this.title, centerX - this.font.width(this.title) / 2, top - 28, 0xFFAA0000, true);
+        graphics.text(this.font, Component.translatable("screen.deathnote_realistic.rule", DeathNoteRules.DEATH_DELAY_SECONDS), centerX - 110, top - 13, 0xFFB0B0B0, false);
     }
 }
