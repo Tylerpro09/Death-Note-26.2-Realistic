@@ -36,7 +36,8 @@ public final class DeathNoteScreen extends Screen {
             this.targetKind = switch (this.targetKind) {
                 case "player" -> "entity";
                 case "entity" -> "block";
-                case "block" -> "restore_block";
+                case "block" -> "restore_player";
+                case "restore_player" -> "restore_block";
                 default -> "player";
             };
             button.setMessage(targetKindLabel());
