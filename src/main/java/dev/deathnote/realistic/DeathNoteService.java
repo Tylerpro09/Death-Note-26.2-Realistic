@@ -1,10 +1,18 @@
 package dev.deathnote.realistic;
 
+import com.google.gson.Gson;
+import com.google.gson.GsonBuilder;
+import com.google.gson.JsonArray;
+import com.google.gson.JsonElement;
+import com.google.gson.JsonObject;
+import com.google.gson.JsonParser;
 import dev.deathnote.realistic.network.DeathNoteWritePayload;
 import net.minecraft.ChatFormatting;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.registries.BuiltInRegistries;
+import net.minecraft.core.registries.Registries;
 import net.minecraft.network.chat.Component;
+import net.minecraft.resources.Identifier;
 import net.minecraft.resources.ResourceKey;
 import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.level.ServerLevel;
@@ -13,7 +21,13 @@ import net.minecraft.world.entity.Entity;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.level.block.Blocks;
 import net.minecraft.world.level.block.state.BlockState;
+import net.minecraft.world.level.storage.LevelResource;
 
+import java.io.IOException;
+import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.StandardCopyOption;
 import java.util.Comparator;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -34,6 +48,11 @@ public final class DeathNoteService {
     private static final int BLOCK_SCAN_INTERVAL_TICKS = 20;
     private static final int MAX_BLOCKS_ERASED_PER_SCAN = 2048;
     private static final int MAX_RESTORE_HISTORY_PER_BLOCK = 50000;
+    private static final int SAVE_INTERVAL_TICKS = 100;
+
+    private static final Gson GSON = new GsonBuilder().setPrettyPrinting().create();
+    private static final String STATE_DIRECTORY = "deathnote_realistic";
+    private static final String STATE_FILE = "state.json";
 
     private static final Map<UUID, PendingDeath> PENDING = new HashMap<>();
     private static final Map<UUID, Long> WRITER_COOLDOWN_UNTIL = new HashMap<>();
@@ -41,6 +60,7 @@ public final class DeathNoteService {
     private static final Map<String, LinkedHashMap<ErasedBlockKey, BlockState>> ERASED_BLOCK_HISTORY = new HashMap<>();
     private static final Map<String, UUID> CONDEMNED_PLAYERS = new HashMap<>();
     private static long ticks;
+    private static boolean stateDirty;
 
     private DeathNoteService() {}
 
@@ -115,6 +135,7 @@ public final class DeathNoteService {
             return;
         }
 
+        markDirty();
         writer.sendSystemMessage(Component.translatable("message.deathnote_realistic.player_restored", name).withStyle(ChatFormatting.GREEN));
         ServerPlayer target = ((ServerLevel) writer.level()).getServer().getPlayerList().getPlayer(removed);
         if (target != null) {
@@ -167,6 +188,7 @@ public final class DeathNoteService {
 
         CONDEMNED_BLOCK_IDS.add(id);
         ERASED_BLOCK_HISTORY.computeIfAbsent(id, ignored -> new LinkedHashMap<>());
+        markDirty();
 
         int erasedNow = eraseCondemnedBlocks(((ServerLevel) writer.level()).getServer(), MAX_BLOCKS_ERASED_PER_SCAN);
         writer.sendSystemMessage(Component.translatable(
@@ -186,6 +208,7 @@ public final class DeathNoteService {
 
         CONDEMNED_BLOCK_IDS.remove(id);
         LinkedHashMap<ErasedBlockKey, BlockState> history = ERASED_BLOCK_HISTORY.remove(id);
+        markDirty();
         if (history == null || history.isEmpty()) {
             writer.sendSystemMessage(Component.translatable("message.deathnote_realistic.block_restore_none", id).withStyle(ChatFormatting.YELLOW));
             return;
@@ -249,6 +272,7 @@ public final class DeathNoteService {
             }
         }
 
+        if (erased > 0) markDirty();
         return erased;
     }
 
@@ -280,6 +304,10 @@ public final class DeathNoteService {
             eraseCondemnedBlocks(server, MAX_BLOCKS_ERASED_PER_SCAN);
         }
 
+        if (stateDirty && ticks % SAVE_INTERVAL_TICKS == 0) {
+            saveState(server);
+        }
+
         if (PENDING.isEmpty()) return;
 
         Iterator<Map.Entry<UUID, PendingDeath>> iterator = PENDING.entrySet().iterator();
@@ -290,11 +318,141 @@ public final class DeathNoteService {
             ServerPlayer target = server.getPlayerList().getPlayer(pending.targetId());
             if (target != null && target.isAlive()) {
                 CONDEMNED_PLAYERS.put(pending.targetName().toLowerCase(), target.getUUID());
+                markDirty();
                 target.sendSystemMessage(causeMessage(pending.cause()));
                 target.kill((ServerLevel) target.level());
             }
             iterator.remove();
         }
+    }
+
+    public static void loadState(MinecraftServer server) {
+        CONDEMNED_PLAYERS.clear();
+        CONDEMNED_BLOCK_IDS.clear();
+        ERASED_BLOCK_HISTORY.clear();
+
+        Path path = statePath(server);
+        if (!Files.exists(path)) {
+            stateDirty = false;
+            DeathNoteMod.LOGGER.info("No persistent Death Note state found yet.");
+            return;
+        }
+
+        try {
+            JsonObject root = JsonParser.parseString(Files.readString(path, StandardCharsets.UTF_8)).getAsJsonObject();
+
+            JsonObject players = root.has("condemnedPlayers") ? root.getAsJsonObject("condemnedPlayers") : new JsonObject();
+            for (Map.Entry<String, JsonElement> entry : players.entrySet()) {
+                try {
+                    CONDEMNED_PLAYERS.put(entry.getKey().toLowerCase(), UUID.fromString(entry.getValue().getAsString()));
+                } catch (IllegalArgumentException ignored) {
+                    DeathNoteMod.LOGGER.warn("Ignoring invalid condemned player UUID for {}", entry.getKey());
+                }
+            }
+
+            if (root.has("condemnedBlocks")) {
+                for (JsonElement element : root.getAsJsonArray("condemnedBlocks")) {
+                    String id = normalizeRegistryId(element.getAsString());
+                    if (id != null) CONDEMNED_BLOCK_IDS.add(id);
+                }
+            }
+
+            JsonObject histories = root.has("erasedBlockHistory") ? root.getAsJsonObject("erasedBlockHistory") : new JsonObject();
+            for (Map.Entry<String, JsonElement> historyEntry : histories.entrySet()) {
+                String blockId = normalizeRegistryId(historyEntry.getKey());
+                if (blockId == null || !historyEntry.getValue().isJsonArray()) continue;
+
+                LinkedHashMap<ErasedBlockKey, BlockState> history = new LinkedHashMap<>();
+                for (JsonElement element : historyEntry.getValue().getAsJsonArray()) {
+                    if (!element.isJsonObject()) continue;
+                    JsonObject saved = element.getAsJsonObject();
+                    try {
+                        Identifier dimensionId = parseIdentifier(saved.get("dimension").getAsString());
+                        Identifier savedBlockId = parseIdentifier(saved.get("block").getAsString());
+                        if (dimensionId == null || savedBlockId == null) continue;
+
+                        ResourceKey<Level> dimension = ResourceKey.create(Registries.DIMENSION, dimensionId);
+                        var block = BuiltInRegistries.BLOCK.getValue(savedBlockId);
+                        if (block == null) continue;
+
+                        BlockPos pos = new BlockPos(saved.get("x").getAsInt(), saved.get("y").getAsInt(), saved.get("z").getAsInt());
+                        history.put(new ErasedBlockKey(dimension, pos), block.defaultBlockState());
+                    } catch (RuntimeException ignored) {
+                        DeathNoteMod.LOGGER.warn("Ignoring invalid restored block entry for {}", blockId);
+                    }
+                }
+                if (!history.isEmpty()) ERASED_BLOCK_HISTORY.put(blockId, history);
+            }
+
+            stateDirty = false;
+            DeathNoteMod.LOGGER.info(
+                "Loaded persistent Death Note state: {} condemned player(s), {} condemned block type(s), {} restore history group(s).",
+                CONDEMNED_PLAYERS.size(), CONDEMNED_BLOCK_IDS.size(), ERASED_BLOCK_HISTORY.size()
+            );
+        } catch (Exception exception) {
+            DeathNoteMod.LOGGER.error("Failed to load persistent Death Note state from {}", path, exception);
+        }
+    }
+
+    public static void saveState(MinecraftServer server) {
+        Path path = statePath(server);
+        try {
+            Files.createDirectories(path.getParent());
+
+            JsonObject root = new JsonObject();
+            root.addProperty("version", 1);
+
+            JsonObject players = new JsonObject();
+            CONDEMNED_PLAYERS.forEach((name, uuid) -> players.addProperty(name, uuid.toString()));
+            root.add("condemnedPlayers", players);
+
+            JsonArray blocks = new JsonArray();
+            CONDEMNED_BLOCK_IDS.stream().sorted().forEach(blocks::add);
+            root.add("condemnedBlocks", blocks);
+
+            JsonObject histories = new JsonObject();
+            for (Map.Entry<String, LinkedHashMap<ErasedBlockKey, BlockState>> historyEntry : ERASED_BLOCK_HISTORY.entrySet()) {
+                JsonArray entries = new JsonArray();
+                for (Map.Entry<ErasedBlockKey, BlockState> entry : historyEntry.getValue().entrySet()) {
+                    ErasedBlockKey key = entry.getKey();
+                    JsonObject saved = new JsonObject();
+                    saved.addProperty("dimension", key.dimension().identifier().toString());
+                    saved.addProperty("x", key.pos().getX());
+                    saved.addProperty("y", key.pos().getY());
+                    saved.addProperty("z", key.pos().getZ());
+                    saved.addProperty("block", BuiltInRegistries.BLOCK.getKey(entry.getValue().getBlock()).toString());
+                    entries.add(saved);
+                }
+                histories.add(historyEntry.getKey(), entries);
+            }
+            root.add("erasedBlockHistory", histories);
+
+            Path temporary = path.resolveSibling(STATE_FILE + ".tmp");
+            Files.writeString(temporary, GSON.toJson(root), StandardCharsets.UTF_8);
+            Files.move(temporary, path, StandardCopyOption.REPLACE_EXISTING);
+            stateDirty = false;
+        } catch (IOException exception) {
+            DeathNoteMod.LOGGER.error("Failed to save persistent Death Note state to {}", path, exception);
+        }
+    }
+
+    public static void shutdown(MinecraftServer server) {
+        if (stateDirty) saveState(server);
+    }
+
+    private static Path statePath(MinecraftServer server) {
+        return server.getWorldPath(LevelResource.ROOT).resolve(STATE_DIRECTORY).resolve(STATE_FILE);
+    }
+
+    private static Identifier parseIdentifier(String raw) {
+        if (raw == null) return null;
+        int separator = raw.indexOf(':');
+        if (separator <= 0 || separator >= raw.length() - 1) return null;
+        return Identifier.fromNamespaceAndPath(raw.substring(0, separator), raw.substring(separator + 1));
+    }
+
+    private static void markDirty() {
+        stateDirty = true;
     }
 
     private static Component causeMessage(DeathCause cause) {
