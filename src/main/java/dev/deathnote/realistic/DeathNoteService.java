@@ -5,16 +5,20 @@ import net.minecraft.ChatFormatting;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.network.chat.Component;
+import net.minecraft.resources.ResourceKey;
 import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.entity.Entity;
+import net.minecraft.world.level.Level;
 import net.minecraft.world.level.block.Blocks;
+import net.minecraft.world.level.block.state.BlockState;
 
 import java.util.Comparator;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.Iterator;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -26,15 +30,15 @@ public final class DeathNoteService {
     private static final Pattern VALID_REGISTRY_ID = Pattern.compile("^[a-z0-9_.-]+:[a-z0-9_./-]+$");
     private static final int ENTITY_RADIUS = 64;
 
-    // Every block ID written in BLOCK mode remains active. The server keeps
-    // erasing matching blocks from active areas as the world is played.
     private static final int GLOBAL_BLOCK_SCAN_RADIUS = 24;
     private static final int BLOCK_SCAN_INTERVAL_TICKS = 20;
     private static final int MAX_BLOCKS_ERASED_PER_SCAN = 2048;
+    private static final int MAX_RESTORE_HISTORY_PER_BLOCK = 50000;
 
     private static final Map<UUID, PendingDeath> PENDING = new HashMap<>();
     private static final Map<UUID, Long> WRITER_COOLDOWN_UNTIL = new HashMap<>();
     private static final Set<String> CONDEMNED_BLOCK_IDS = new HashSet<>();
+    private static final Map<String, LinkedHashMap<ErasedBlockKey, BlockState>> ERASED_BLOCK_HISTORY = new HashMap<>();
     private static long ticks;
 
     private DeathNoteService() {}
@@ -49,6 +53,7 @@ public final class DeathNoteService {
         switch (kind) {
             case "entity" -> eraseNearestEntity(writer, payload.targetName());
             case "block" -> condemnBlockGlobally(writer, payload.targetName());
+            case "restore_block" -> restoreBlockGlobally(writer, payload.targetName());
             default -> submitPlayer(writer, payload);
         }
     }
@@ -131,14 +136,52 @@ public final class DeathNoteService {
         }
 
         CONDEMNED_BLOCK_IDS.add(id);
-        int erasedNow = eraseCondemnedBlocks(((ServerLevel) writer.level()).getServer(), MAX_BLOCKS_ERASED_PER_SCAN);
+        ERASED_BLOCK_HISTORY.computeIfAbsent(id, ignored -> new LinkedHashMap<>());
 
+        int erasedNow = eraseCondemnedBlocks(((ServerLevel) writer.level()).getServer(), MAX_BLOCKS_ERASED_PER_SCAN);
         writer.sendSystemMessage(Component.translatable(
             "message.deathnote_realistic.block_erasure_activated",
             id,
             erasedNow,
             GLOBAL_BLOCK_SCAN_RADIUS
         ).withStyle(ChatFormatting.DARK_RED));
+    }
+
+    private static void restoreBlockGlobally(ServerPlayer writer, String rawId) {
+        String id = normalizeRegistryId(rawId);
+        if (id == null) {
+            message(writer, "message.deathnote_realistic.invalid_registry_id", ChatFormatting.RED);
+            return;
+        }
+
+        CONDEMNED_BLOCK_IDS.remove(id);
+        LinkedHashMap<ErasedBlockKey, BlockState> history = ERASED_BLOCK_HISTORY.remove(id);
+        if (history == null || history.isEmpty()) {
+            writer.sendSystemMessage(Component.translatable("message.deathnote_realistic.block_restore_none", id).withStyle(ChatFormatting.YELLOW));
+            return;
+        }
+
+        MinecraftServer server = ((ServerLevel) writer.level()).getServer();
+        int restored = 0;
+        for (Map.Entry<ErasedBlockKey, BlockState> entry : history.entrySet()) {
+            ErasedBlockKey key = entry.getKey();
+            ServerLevel level = server.getLevel(key.dimension());
+            if (level == null) continue;
+
+            BlockPos pos = key.pos();
+            if (!level.isLoaded(pos)) continue;
+            if (!level.getBlockState(pos).isAir()) continue;
+
+            level.setBlockAndUpdate(pos, entry.getValue());
+            restored++;
+        }
+
+        writer.sendSystemMessage(Component.translatable(
+            "message.deathnote_realistic.block_restore_done",
+            id,
+            restored,
+            history.size()
+        ).withStyle(ChatFormatting.GREEN));
     }
 
     private static int eraseCondemnedBlocks(MinecraftServer server, int limit) {
@@ -161,12 +204,13 @@ public final class DeathNoteService {
                         long key = pos.asLong() ^ ((long) level.dimension().identifier().hashCode() << 32);
                         if (!visited.add(key)) continue;
 
-                        var state = level.getBlockState(pos);
+                        BlockState state = level.getBlockState(pos);
                         if (state.isAir()) continue;
 
                         String blockId = BuiltInRegistries.BLOCK.getKey(state.getBlock()).toString();
                         if (!CONDEMNED_BLOCK_IDS.contains(blockId)) continue;
 
+                        rememberErasedBlock(blockId, level.dimension(), pos, state);
                         level.setBlockAndUpdate(pos, Blocks.AIR.defaultBlockState());
                         erased++;
                         if (erased >= limit) break outer;
@@ -176,6 +220,19 @@ public final class DeathNoteService {
         }
 
         return erased;
+    }
+
+    private static void rememberErasedBlock(String blockId, ResourceKey<Level> dimension, BlockPos pos, BlockState state) {
+        LinkedHashMap<ErasedBlockKey, BlockState> history = ERASED_BLOCK_HISTORY.computeIfAbsent(blockId, ignored -> new LinkedHashMap<>());
+        ErasedBlockKey key = new ErasedBlockKey(dimension, pos.immutable());
+        history.putIfAbsent(key, state);
+
+        while (history.size() > MAX_RESTORE_HISTORY_PER_BLOCK) {
+            Iterator<ErasedBlockKey> iterator = history.keySet().iterator();
+            if (!iterator.hasNext()) break;
+            iterator.next();
+            iterator.remove();
+        }
     }
 
     private static String normalizeRegistryId(String raw) {
@@ -221,5 +278,6 @@ public final class DeathNoteService {
         player.sendSystemMessage(Component.translatable(key).withStyle(color));
     }
 
+    private record ErasedBlockKey(ResourceKey<Level> dimension, BlockPos pos) {}
     private record PendingDeath(UUID targetId, UUID writerId, DeathCause cause, long dueTick) {}
 }
