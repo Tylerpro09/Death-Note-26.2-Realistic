@@ -39,6 +39,7 @@ public final class DeathNoteService {
     private static final Map<UUID, Long> WRITER_COOLDOWN_UNTIL = new HashMap<>();
     private static final Set<String> CONDEMNED_BLOCK_IDS = new HashSet<>();
     private static final Map<String, LinkedHashMap<ErasedBlockKey, BlockState>> ERASED_BLOCK_HISTORY = new HashMap<>();
+    private static final Map<String, UUID> CONDEMNED_PLAYERS = new HashMap<>();
     private static long ticks;
 
     private DeathNoteService() {}
@@ -54,6 +55,7 @@ public final class DeathNoteService {
             case "entity" -> eraseNearestEntity(writer, payload.targetName());
             case "block" -> condemnBlockGlobally(writer, payload.targetName());
             case "restore_block" -> restoreBlockGlobally(writer, payload.targetName());
+            case "restore_player" -> restorePlayer(writer, payload.targetName());
             default -> submitPlayer(writer, payload);
         }
     }
@@ -91,13 +93,41 @@ public final class DeathNoteService {
 
         DeathCause cause = DeathCause.fromId(payload.causeId());
         long dueTick = ticks + DeathNoteRules.DEATH_DELAY_SECONDS * 20L;
-        PENDING.put(target.getUUID(), new PendingDeath(target.getUUID(), writer.getUUID(), cause, dueTick));
+        PENDING.put(target.getUUID(), new PendingDeath(target.getUUID(), writer.getUUID(), target.getName().getString(), cause, dueTick));
         WRITER_COOLDOWN_UNTIL.put(writer.getUUID(), ticks + DeathNoteRules.WRITER_COOLDOWN_SECONDS * 20L);
 
         writer.sendSystemMessage(
             Component.translatable("message.deathnote_realistic.accepted", target.getName().getString(), DeathNoteRules.DEATH_DELAY_SECONDS)
                 .withStyle(ChatFormatting.DARK_RED)
         );
+    }
+
+    private static void restorePlayer(ServerPlayer writer, String rawName) {
+        String name = rawName == null ? "" : rawName.trim();
+        if (name.length() > DeathNoteRules.MAX_PLAYER_NAME_LENGTH || !VALID_NAME.matcher(name).matches()) {
+            message(writer, "message.deathnote_realistic.invalid_name", ChatFormatting.RED);
+            return;
+        }
+
+        UUID removed = CONDEMNED_PLAYERS.remove(name.toLowerCase());
+        if (removed == null) {
+            writer.sendSystemMessage(Component.translatable("message.deathnote_realistic.player_restore_none", name).withStyle(ChatFormatting.YELLOW));
+            return;
+        }
+
+        writer.sendSystemMessage(Component.translatable("message.deathnote_realistic.player_restored", name).withStyle(ChatFormatting.GREEN));
+        ServerPlayer target = ((ServerLevel) writer.level()).getServer().getPlayerList().getPlayer(removed);
+        if (target != null) {
+            target.sendSystemMessage(Component.translatable("message.deathnote_realistic.player_restored_target").withStyle(ChatFormatting.GREEN));
+        }
+    }
+
+    public static void enforceCondemnedPlayer(ServerPlayer player) {
+        if (!CONDEMNED_PLAYERS.containsValue(player.getUUID())) return;
+        player.sendSystemMessage(Component.translatable("message.deathnote_realistic.respawn_blocked").withStyle(ChatFormatting.DARK_RED));
+        if (player.isAlive()) {
+            player.kill((ServerLevel) player.level());
+        }
     }
 
     private static void eraseNearestEntity(ServerPlayer writer, String rawId) {
@@ -259,6 +289,7 @@ public final class DeathNoteService {
 
             ServerPlayer target = server.getPlayerList().getPlayer(pending.targetId());
             if (target != null && target.isAlive()) {
+                CONDEMNED_PLAYERS.put(pending.targetName().toLowerCase(), target.getUUID());
                 target.sendSystemMessage(causeMessage(pending.cause()));
                 target.kill((ServerLevel) target.level());
             }
@@ -279,5 +310,5 @@ public final class DeathNoteService {
     }
 
     private record ErasedBlockKey(ResourceKey<Level> dimension, BlockPos pos) {}
-    private record PendingDeath(UUID targetId, UUID writerId, DeathCause cause, long dueTick) {}
+    private record PendingDeath(UUID targetId, UUID writerId, String targetName, DeathCause cause, long dueTick) {}
 }
