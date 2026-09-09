@@ -142,7 +142,7 @@ public final class DeathNoteService {
                 for (int dy = -GLOBAL_BLOCK_SCAN_RADIUS; dy <= GLOBAL_BLOCK_SCAN_RADIUS; dy++) {
                     for (int dz = -GLOBAL_BLOCK_SCAN_RADIUS; dz <= GLOBAL_BLOCK_SCAN_RADIUS; dz++) {
                         BlockPos pos = center.offset(dx, dy, dz);
-                        long key = pos.asLong() ^ ((long) level.dimension().location().hashCode() << 32);
+                        long key = pos.asLong() ^ ((long) level.dimension().identifier().hashCode() << 32);
                         if (!visited.add(key)) continue;
 
                         var state = level.getBlockState(pos);
