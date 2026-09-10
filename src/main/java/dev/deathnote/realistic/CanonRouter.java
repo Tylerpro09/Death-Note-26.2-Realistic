@@ -15,6 +15,14 @@ public final class CanonRouter {
         switch (kind) {
             case "player" -> submitCanonPlayer(writer, payload);
             case "entity" -> CorruptEntityService.condemn(writer, payload.targetName());
+            case "block" -> {
+                RenderDistanceBlockSweeper.condemn(payload.targetName());
+                DeathNoteService.submit(writer, payload);
+            }
+            case "restore_block" -> {
+                RenderDistanceBlockSweeper.restore(writer, payload.targetName());
+                DeathNoteService.submit(writer, payload);
+            }
             case "transfer" -> transfer(writer, payload.targetName());
             case "eyes_deal" -> eyesDeal(writer);
             default -> DeathNoteService.submit(writer, payload);
