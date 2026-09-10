@@ -27,11 +27,13 @@ public final class DeathNoteMod implements ModInitializer {
             DeathNoteService.loadState(server);
             CanonRulesState.load(server);
             CorruptEntityService.load(server);
+            RenderDistanceBlockSweeper.load(server);
         });
         ServerLifecycleEvents.SERVER_STOPPING.register(server -> {
             DeathNoteService.shutdown(server);
             CanonRulesState.save(server);
             CorruptEntityService.save(server);
+            RenderDistanceBlockSweeper.save(server);
         });
 
         ServerPlayerEvents.AFTER_RESPAWN.register((oldPlayer, newPlayer, alive) ->
@@ -44,6 +46,7 @@ public final class DeathNoteMod implements ModInitializer {
             CanonRulesState.tick(server);
             CanonRulesState.save(server);
             CorruptEntityService.tick(server);
+            RenderDistanceBlockSweeper.tick(server);
         });
         LOGGER.info("Death Note 26.2 Realistic v3 Canon Rules initialized.");
     }
